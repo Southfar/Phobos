@@ -10,7 +10,7 @@ jobs:
   import:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch official Phobos tag and preserve upstream history
+      - name: Import verified upstream snapshot
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -20,6 +20,11 @@ jobs:
           git fetch --tags --force
           git checkout --detach b1dc830570358315273ce3f958a8846c439c1d7e
           test "$(git rev-parse HEAD)" = b1dc830570358315273ce3f958a8846c439c1d7e
+          git checkout --orphan import-snapshot
+          git rm --cached -r . > /dev/null
+          git add -A
+          git rm --cached -r .github/workflows > /dev/null || true
+          git -c user.name='Phobos Import' -c user.email='85287337+Southfar@users.noreply.github.com' commit -m 'Import Phobos v0.5-alpha2 snapshot (upstream b1dc830570358315273ce3f958a8846c439c1d7e; excludes GitHub workflows)'
           git remote add destination "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push destination HEAD:refs/heads/upstream/v0.5-alpha2
           git push destination HEAD:refs/heads/feature/terrain-activeanim
