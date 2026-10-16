@@ -1,0 +1,672 @@
+#include <PreviewClass.h>
+#include <ThemeClass.h>
+
+#include <Ext/House/Body.h>
+#include <Ext/Side/Body.h>
+#include <Ext/Scenario/Body.h>
+#include <Ext/TechnoType/Body.h>
+#include <Ext/SWType/Body.h>
+
+#include <Misc/FlyingStrings.h>
+
+#include <New/Entity/BannerClass.h>
+
+#include <Utilities/Debug.h>
+
+DEFINE_HOOK(0x777C41, UI_ApplyAppIcon, 0x9)
+{
+	if (Phobos::AppIconPath != nullptr && strlen(Phobos::AppIconPath))
+	{
+		Debug::Log("Applying AppIcon from \"%s\"\n", Phobos::AppIconPath);
+
+		R->EAX(LoadImage(NULL, Phobos::AppIconPath, IMAGE_ICON, 0, 0, LR_LOADFROMFILE));
+		return 0x777C4A;
+	}
+
+	return 0;
+}
+
+DEFINE_HOOK(0x640B8D, LoadingScreen_DisableEmptySpawnPositions, 0x6)
+{
+	GET(const bool, esi, ESI);
+	if (Phobos::UI::DisableEmptySpawnPositions || !esi)
+	{
+		return 0x640CE2;
+	}
+	return 0x640B93;
+}
+
+//DEFINE_HOOK(0x640E78, LoadingScreen_DisableColorPoints, 0x6)
+//{
+//	return 0x641071;
+//}
+
+// Allow size = 0 for map previews
+DEFINE_HOOK(0x641B41, LoadingScreen_SkipPreview, 0x8)
+{
+	GET(RectangleStruct*, pRect, EAX);
+	if (pRect->Width > 0 && pRect->Height > 0)
+	{
+		return 0;
+	}
+	return 0x641D4E;
+}
+
+DEFINE_HOOK(0x641EE0, PreviewClass_ReadPreview, 0x6)
+{
+	GET(PreviewClass*, pThis, ECX);
+	GET_STACK(const char*, lpMapFile, 0x4);
+
+	CCFileClass file(lpMapFile);
+	if (file.Exists() && file.Open(FileAccessMode::Read))
+	{
+		CCINIClass ini;
+		ini.ReadCCFile(&file, true);
+		ini.CurrentSection = nullptr;
+		ini.CurrentSectionName = nullptr;
+
+		ScenarioClass::Instance->ReadStartPoints(ini);
+
+		R->EAX(pThis->ReadPreviewPack(ini));
+	}
+	else
+		R->EAX(false);
+
+	return 0x64203D;
+}
+
+DEFINE_HOOK(0x4A26E8, CreditClass_AI_SmoothDisable, 0x6)
+{
+	if (!Phobos::UI::CreditsIndicator_Smooth)
+		return 0x4A26F0;
+	else
+		return 0;
+}
+
+DEFINE_HOOK(0x4A2729, CreditClass_AI_CreditsStepClamp, 0x5)
+{
+	enum { Continue = 0x4A2735 };
+
+    const int maxStep = Phobos::UI::CreditsIndicator_MaxStep;
+    if (maxStep <= 0)
+        return Continue;
+
+    GET(const int, current, EAX);
+
+    R->EAX(Math::min(current, maxStep));
+
+    return Continue;
+}
+
+DEFINE_HOOK(0x4A25E0, CreditsClass_GraphicLogic_HarvesterCounter, 0x7)
+{
+	auto const pPlayer = HouseClass::CurrentPlayer;
+	if (pPlayer->Defeated)
+		return 0;
+
+	RectangleStruct vRect = DSurface::Sidebar->GetRect();
+
+	if (Phobos::UI::HarvesterCounter_Show && Phobos::Config::ShowHarvesterCounter)
+	{
+		const auto pSideExt = SideExt::Fetch(SideClass::Array.GetItem(pPlayer->SideIndex));
+		wchar_t counter[0x20];
+		const int nActive = HouseExt::ActiveHarvesterCount(pPlayer);
+		const int nTotal = HouseExt::TotalHarvesterCount(pPlayer);
+		const double nPercentage = nTotal == 0 ? 1.0 : (double)nActive / (double)nTotal;
+
+		const ColorStruct clrToolTip = nPercentage > Phobos::UI::HarvesterCounter_ConditionYellow
+			? pSideExt->Sidebar_HarvesterCounter_ColorGreen.Get(Drawing::TooltipColor) : nPercentage > Phobos::UI::HarvesterCounter_ConditionRed
+			? pSideExt->Sidebar_HarvesterCounter_ColorYellow : pSideExt->Sidebar_HarvesterCounter_ColorRed;
+
+		if (pSideExt->Sidebar_HarvesterCounter_HideMaxValue)
+			swprintf_s(counter, L"%ls%d", Phobos::UI::HarvesterLabel, nActive);
+		else if (pSideExt->Sidebar_HarvesterCounter_OnlyMaxValue)
+			swprintf_s(counter, L"%ls%d", Phobos::UI::HarvesterLabel, nTotal);
+		else
+			swprintf_s(counter, L"%ls%d/%d", Phobos::UI::HarvesterLabel, nActive, nTotal);
+
+		Point2D vPos = {
+			DSurface::Sidebar->GetWidth() / 2 + 50 + pSideExt->Sidebar_HarvesterCounter_Offset.Get().X,
+			2 + pSideExt->Sidebar_HarvesterCounter_Offset.Get().Y
+		};
+
+		DSurface::Sidebar->DrawText(counter, &vRect, &vPos, Drawing::RGB_To_Int(clrToolTip), 0,
+			TextPrintType::UseGradPal | TextPrintType::Center | TextPrintType::Metal12);
+	}
+
+	if (Phobos::UI::PowerDelta_Show && Phobos::Config::ShowPowerDelta && pPlayer->Buildings.Count)
+	{
+		const auto pSideExt = SideExt::Fetch(SideClass::Array.GetItem(pPlayer->SideIndex));
+		wchar_t counter[0x20];
+
+		ColorStruct clrToolTip;
+
+		if (pPlayer->PowerBlackoutTimer.InProgress())
+		{
+			clrToolTip = pSideExt->Sidebar_PowerDelta_ColorGrey;
+			swprintf_s(counter, L"%ls", Phobos::UI::PowerBlackoutLabel);
+		}
+		else
+		{
+			const int delta = pPlayer->PowerOutput - pPlayer->PowerDrain;
+
+			const double percent = pPlayer->PowerOutput != 0
+				? (double)pPlayer->PowerDrain / (double)pPlayer->PowerOutput : pPlayer->PowerDrain != 0
+				? Phobos::UI::PowerDelta_ConditionRed * 2.f : Phobos::UI::PowerDelta_ConditionYellow;
+
+			clrToolTip = percent < Phobos::UI::PowerDelta_ConditionYellow
+				? pSideExt->Sidebar_PowerDelta_ColorGreen : LESS_EQUAL(percent, Phobos::UI::PowerDelta_ConditionRed)
+				? pSideExt->Sidebar_PowerDelta_ColorYellow : pSideExt->Sidebar_PowerDelta_ColorRed;
+
+			swprintf_s(counter, L"%ls%+d", Phobos::UI::PowerLabel, delta);
+		}
+
+		Point2D vPos = {
+			DSurface::Sidebar->GetWidth() / 2 - 70 + pSideExt->Sidebar_PowerDelta_Offset.Get().X,
+			2 + pSideExt->Sidebar_PowerDelta_Offset.Get().Y
+		};
+
+		auto const TextFlags = static_cast<TextPrintType>(static_cast<int>(TextPrintType::UseGradPal | TextPrintType::Metal12)
+				| static_cast<int>(pSideExt->Sidebar_PowerDelta_Align.Get()));
+
+		DSurface::Sidebar->DrawText(counter, &vRect, &vPos, Drawing::RGB_To_Int(clrToolTip), 0, TextFlags);
+	}
+
+	if (Phobos::UI::WeedsCounter_Show && Phobos::Config::ShowWeedsCounter)
+	{
+		const auto pSideExt = SideExt::Fetch(SideClass::Array.GetItem(pPlayer->SideIndex));
+		wchar_t counter[0x20];
+		const ColorStruct clrToolTip = pSideExt->Sidebar_WeedsCounter_Color.Get(Drawing::TooltipColor);
+
+		swprintf_s(counter, L"%d", static_cast<int>(pPlayer->OwnedWeed.GetTotalAmount()));
+
+		Point2D vPos = {
+			DSurface::Sidebar->GetWidth() / 2 + 50 + pSideExt->Sidebar_WeedsCounter_Offset.Get().X,
+			2 + pSideExt->Sidebar_WeedsCounter_Offset.Get().Y
+		};
+
+		DSurface::Sidebar->DrawText(counter, &vRect, &vPos, Drawing::RGB_To_Int(clrToolTip), 0,
+			TextPrintType::UseGradPal | TextPrintType::Center | TextPrintType::Metal12);
+	}
+
+	return 0;
+}
+
+DEFINE_HOOK_AGAIN(0x6CE8AA, Replace_XXICON_With_New, 0x7)   //SWTypeClass::Load
+DEFINE_HOOK_AGAIN(0x6CEE31, Replace_XXICON_With_New, 0x7)   //SWTypeClass::ReadINI
+DEFINE_HOOK_AGAIN(0x716D13, Replace_XXICON_With_New, 0x7)   //TechnoTypeClass::Load
+DEFINE_HOOK(0x715A4D, Replace_XXICON_With_New, 0x7)         //TechnoTypeClass::ReadINI
+{
+	char pFilename[0x20];
+	strcpy_s(pFilename, RulesExt::Global()->MissingCameo.data());
+	_strlwr_s(pFilename);
+
+	if (_stricmp(pFilename, GameStrings::XXICON_SHP)
+		&& strstr(pFilename, ".shp"))
+	{
+		if (const auto pFile = FileSystem::LoadFile(RulesExt::Global()->MissingCameo, false))
+		{
+			R->EAX(pFile);
+			return R->Origin() + 0xC;
+		}
+	}
+
+	return 0;
+}
+
+DEFINE_HOOK(0x6A8463, StripClass_OperatorLessThan_CameoPriority, 0x5)
+{
+	GET_STACK(TechnoTypeClass*, pLeft, STACK_OFFSET(0x1C, -0x8));
+	GET_STACK(TechnoTypeClass*, pRight, STACK_OFFSET(0x1C, -0x4));
+	GET_STACK(const int, idxLeft, STACK_OFFSET(0x1C, 0x8));
+	GET_STACK(const int, idxRight, STACK_OFFSET(0x1C, 0x10));
+	GET_STACK(const AbstractType, rttiLeft, STACK_OFFSET(0x1C, 0x4));
+	GET_STACK(const AbstractType, rttiRight, STACK_OFFSET(0x1C, 0xC));
+	const auto pLeftTechnoExt = TechnoTypeExt::TryFetch(pLeft);
+	const auto pRightTechnoExt = TechnoTypeExt::TryFetch(pRight);
+	const auto pLeftSWExt = (rttiLeft == AbstractType::Special || rttiLeft == AbstractType::Super || rttiLeft == AbstractType::SuperWeaponType)
+		? SWTypeExt::TryFetch(SuperWeaponTypeClass::Array.GetItem(idxLeft)) : nullptr;
+	const auto pRightSWExt = (rttiRight == AbstractType::Special || rttiRight == AbstractType::Super || rttiRight == AbstractType::SuperWeaponType)
+		? SWTypeExt::TryFetch(SuperWeaponTypeClass::Array.GetItem(idxRight)) : nullptr;
+
+	if ((pLeftTechnoExt || pLeftSWExt) && (pRightTechnoExt || pRightSWExt))
+	{
+		const int leftPriority = pLeftTechnoExt ? pLeftTechnoExt->CameoPriority : pLeftSWExt->CameoPriority;
+		const int rightPriority = pRightTechnoExt ? pRightTechnoExt->CameoPriority : pRightSWExt->CameoPriority;
+		enum { rTrue = 0x6A8692, rFalse = 0x6A86A0 };
+
+		if (leftPriority > rightPriority)
+			return rTrue;
+		else if (rightPriority > leftPriority)
+			return rFalse;
+	}
+
+	// Restore overridden instructions
+	GET(const AbstractType, rtti1, ESI);
+	return rtti1 == AbstractType::Special ? 0x6A8477 : 0x6A8468;
+}
+
+DEFINE_HOOK(0x6A84DB, StripClass_OperatorLessThan_SortCameoByNameSW, 0x5)
+{
+	enum { rTrue = 0x6A8692, rFalse = 0x6A86A0 };
+
+	GET(SuperWeaponTypeClass*, pLeftSW, EAX);
+	GET(SuperWeaponTypeClass*, pRightSW, ECX);
+
+	if (RulesExt::Global()->SortCameoByName)
+	{
+		const int result = strcmp(pLeftSW->Name, pRightSW->Name);
+
+		if (result < 0)
+			return rTrue;
+		else if (result > 0)
+			return rFalse;
+	}
+
+	return wcscmp(pLeftSW->UIName, pRightSW->UIName) <= 0 ? rTrue : rFalse;
+}
+
+DEFINE_HOOK(0x6A86ED, StripClass_OperatorLessThan_SortCameoByNameTechno, 0x5)
+{
+	enum { rTrue = 0x6A8692, rFalse = 0x6A86A0 };
+
+	GET(TechnoTypeClass*, pLeft, EDI);
+	GET(TechnoTypeClass*, pRight, EBP);
+
+	if (RulesExt::Global()->SortCameoByName)
+	{
+		const int result = strcmp(pLeft->Name, pRight->Name);
+
+		if (result < 0)
+			return rTrue;
+		else if (result > 0)
+			return rFalse;
+	}
+
+	return wcscmp(pLeft->UIName, pRight->UIName) <= 0 ? rTrue : rFalse;
+}
+
+DEFINE_HOOK(0x6D4684, TacticalClass_Draw_FlyingStrings, 0x6)
+{
+	FlyingStrings::UpdateAll();
+	return 0;
+}
+
+DEFINE_HOOK(0x456776, BuildingClass_DrawRadialIndicator_Visibility, 0x6)
+{
+	enum { ContinueDraw = 0x456789, DoNotDraw = 0x456962 };
+	GET(BuildingClass* const, pThis, ESI);
+
+	if (HouseClass::IsCurrentPlayerObserver() || pThis->Owner->IsControlledByCurrentPlayer())
+		return ContinueDraw;
+
+	AffectedHouse const canSee = RulesExt::Global()->RadialIndicatorVisibility.Get();
+	if (pThis->Owner->IsAlliedWith(HouseClass::CurrentPlayer) ? canSee & AffectedHouse::Allies : canSee & AffectedHouse::Enemies)
+		return ContinueDraw;
+
+	return DoNotDraw;
+}
+
+DEFINE_HOOK(0x6D4B25, TacticalClass_Render_Banner, 0x5)
+{
+	for (const auto& pBanner : BannerClass::Array)
+		pBanner->Render();
+
+	return 0;
+}
+
+#pragma region ShowBriefing
+
+namespace BriefingTemp
+{
+	bool ShowBriefing = false;
+}
+
+static __forceinline void ShowBriefing()
+{
+	if (BriefingTemp::ShowBriefing)
+	{
+		// Show briefing dialog.
+		Game::SpecialDialog = 9;
+		Game::ShowSpecialDialog();
+		BriefingTemp::ShowBriefing = false;
+
+		// Play scenario theme.
+		const int theme = ScenarioClass::Instance->ThemeIndex;
+
+		if (theme == -1)
+			ThemeClass::Instance.Stop(true);
+		else
+			ThemeClass::Instance.Queue(theme);
+	}
+}
+
+// Check if briefing dialog should be played before starting scenario.
+DEFINE_HOOK(0x683E41, ScenarioClass_Start_ShowBriefing, 0x6)
+{
+	enum { SkipGameCode = 0x683E6B };
+
+	GET_STACK(const bool, showBriefing, STACK_OFFSET(0xFC, -0xE9));
+
+	// Don't show briefing dialog for non-campaign games etc.
+	if (!Phobos::Config::ShowBriefing || !ScenarioExt::Global()->ShowBriefing || !showBriefing || !SessionClass::IsCampaign())
+		return 0;
+
+	BriefingTemp::ShowBriefing = true;
+
+	int theme = ScenarioExt::Global()->BriefingTheme;
+
+	if (theme == -1)
+	{
+		const SideClass* pSide = SideClass::Array.GetItemOrDefault(ScenarioClass::Instance->PlayerSideIndex);
+
+		if (const auto pSideExt = SideExt::TryFetch(pSide))
+			theme = pSideExt->BriefingTheme;
+	}
+
+	if (theme != -1)
+		ThemeClass::Instance.Queue(theme);
+
+	// Skip over playing scenario theme.
+	return SkipGameCode;
+}
+
+// Show the briefing dialog before entering game loop.
+DEFINE_HOOK(0x48CE85, MainGame_ShowBriefing, 0x5)
+{
+	enum { SkipGameCode = 0x48CE8A };
+
+	// Restore overridden instructions.
+	SessionClass::Instance.Resume();
+
+	ShowBriefing();
+
+	return SkipGameCode;
+}
+
+// Show the briefing dialog on starting a new scenario after clearing another.
+DEFINE_HOOK(0x55D14F, AuxLoop_ShowBriefing, 0x5)
+{
+	enum { SkipGameCode = 0x55D159 };
+
+	// Restore overridden instructions.
+	SessionClass::Instance.Resume();
+
+	ShowBriefing();
+
+	return SkipGameCode;
+}
+
+// Skip redrawing the screen if we're gonna show the briefing screen immediately after loading screen finishes on initially launched mission.
+DEFINE_HOOK(0x683F66, PauseGame_ShowBriefing, 0x5)
+{
+	enum { SkipGameCode = 0x683FAA };
+
+	if (BriefingTemp::ShowBriefing)
+		return SkipGameCode;
+
+	return 0;
+}
+
+// Skip redrawing the screen if we're gonna show the briefing screen immediately after loading screen finishes on succeeding missions.
+DEFINE_HOOK(0x685D95, DoWin_ShowBriefing, 0x5)
+{
+	enum { SkipGameCode = 0x685D9F };
+
+	if (BriefingTemp::ShowBriefing)
+		return SkipGameCode;
+
+	return 0;
+}
+
+// Set briefing dialog resume button text.
+DEFINE_HOOK(0x65F764, BriefingDialog_ShowBriefing, 0x5)
+{
+	if (BriefingTemp::ShowBriefing)
+	{
+		GET(const HWND, hDlg, ESI);
+
+		auto const hResumeBtn = GetDlgItem(hDlg, 1059);
+		SendMessageA(hResumeBtn, 1202, 0, reinterpret_cast<LPARAM>(Phobos::UI::ShowBriefingResumeButtonLabel));
+	}
+
+	return 0;
+}
+
+// Set briefing dialog resume button status bar label.
+DEFINE_HOOK(0x604985, GetDialogUIStatusLabels_ShowBriefing, 0x5)
+{
+	if (BriefingTemp::ShowBriefing)
+	{
+		enum { SkipGameCode = 0x60498A };
+
+		R->EAX(Phobos::UI::ShowBriefingResumeButtonStatusLabel);
+
+		return SkipGameCode;
+	}
+
+	return 0;
+}
+
+#pragma endregion
+
+static bool __fastcall Fake_HouseIsAlliedWith(HouseClass* pThis, void*, HouseClass* CurrentPlayer)
+{
+	return (Phobos::Config::ShowPlanningPath && SessionClass::IsSingleplayer())
+		|| pThis->IsControlledByCurrentPlayer()
+		|| pThis->IsAlliedWith(CurrentPlayer);
+}
+
+DEFINE_FUNCTION_JUMP(CALL, 0x63B136, Fake_HouseIsAlliedWith);
+DEFINE_FUNCTION_JUMP(CALL, 0x63B100, Fake_HouseIsAlliedWith);
+DEFINE_FUNCTION_JUMP(CALL, 0x63B17F, Fake_HouseIsAlliedWith);
+DEFINE_FUNCTION_JUMP(CALL, 0x63B1BA, Fake_HouseIsAlliedWith);
+DEFINE_FUNCTION_JUMP(CALL, 0x63B2CE, Fake_HouseIsAlliedWith);
+
+DEFINE_HOOK(0x69A317, SessionClass_PlayerColorIndexToColorSchemeIndex, 0x0)
+{
+	GET_STACK(int, index, 0x4);
+
+	const bool isRandom = index == PlayerColorSlot::Random;
+
+	if (Phobos::Config::SkirmishUnlimitedColors)
+	{
+		// Allow player color indices to map directly to color scheme indices.
+		if (isRandom)
+			index = ColorScheme::FindIndex("LightGrey", 53);
+		else
+			index = index * 2 + 1;
+	}
+	else
+	{
+		// Vanilla behaviour.
+		if (isRandom)
+			index = ColorScheme::PlayerColorToColorSchemeLUT[PlayerColorSlot::White];
+		else if (index < PlayerColorSlot::Count)
+			index = ColorScheme::PlayerColorToColorSchemeLUT[index];
+	}
+
+	R->EAX(index);
+
+	return 0x69A325;
+}
+
+DEFINE_HOOK(0x552F79, LoadProgressManager_Draw_MissingLoadingScreenDefaults, 0x6)
+{
+	GET(LoadProgressManager*, pThis, EBP);
+	GET(ConvertClass*, pDrawer, EBX);
+	GET_STACK(const bool, isLowRes, STACK_OFFSET(0x1268, -0x1235));
+
+	auto const pScenarioExt = ScenarioExt::Global();
+
+	if (!pThis->LoadScreenSHP)
+		pThis->LoadScreenSHP = FileSystem::LoadSHPFile(isLowRes ? pScenarioExt->DefaultLS640BkgdName : pScenarioExt->DefaultLS800BkgdName);
+
+	if (!pDrawer)
+	{
+		// Uncertain how necessary this is but is what game does...
+		if (LoadProgressManager::LoadScreenPal)
+		{
+			GameDelete(LoadProgressManager::LoadScreenPal);
+			LoadProgressManager::LoadScreenPal = nullptr;
+		}
+
+		if (LoadProgressManager::LoadScreenBytePal)
+		{
+			GameDelete(LoadProgressManager::LoadScreenBytePal);
+			LoadProgressManager::LoadScreenBytePal = nullptr;
+		}
+
+		ConvertClass::CreateFromFile(pScenarioExt->DefaultLS800BkgdPal, LoadProgressManager::LoadScreenBytePal, LoadProgressManager::LoadScreenPal);
+
+		R->EBX(LoadProgressManager::LoadScreenPal);
+	}
+
+	return 0;
+}
+
+// Hides the number at top-left of screen when debug stats are not being drawn
+DEFINE_HOOK(0x55F1F8, MPDebugPrint_CheckDrawFlag, 0x8)
+{
+    return Game::DrawMPDebugStats ? 0 : 0x55F280;
+}
+
+#pragma region Draw Timer
+
+namespace DrawTimerTemp
+{
+	bool AdjustLocation = false;
+	bool IsPercentage = false;
+	double Percentage = 0.0;
+	int TimeLeft = 0;
+}
+
+DEFINE_HOOK(0x6D3D10, TacticalClass_Render_BeforeAll, 0x6)
+{
+	using namespace DrawTimerTemp;
+	AdjustLocation = false;
+	IsPercentage = false;
+	return 0;
+}
+
+DEFINE_HOOK(0x6D4992, TacticalClass_Render_DrawMissionTimer_TimeLeft, 0x6)
+{
+	DrawTimerTemp::TimeLeft = R->EDX<int>();
+	return 0;
+}
+
+DEFINE_HOOK(0x6D4A10, TacticalClass_Render_DrawSuperTimer_PercentageTimer, 0x6)
+{
+	enum { SkipGetTimeLeft = 0x6D4A35 };
+
+	GET(SuperClass*, pSuper, ECX);
+
+	DrawTimerTemp::IsPercentage = false;
+	const int timeLeft = pSuper->RechargeTimer.GetTimeLeft();
+	const auto pSWTypeExt = SWTypeExt::Fetch(pSuper->Type);
+
+	if (pSWTypeExt->ShowTimer_Percentage.Get(RulesExt::Global()->SuperWeaponTimer_Percentage))
+	{
+		DrawTimerTemp::IsPercentage = true;
+		const int recharge = pSuper->GetRechargeTime();
+		const double percentage = DrawTimerTemp::Percentage = recharge > 0 ? std::min(static_cast<double>(recharge - timeLeft) / recharge, 1.0) : 1.0;
+		R->ESI(percentage == 1.0 ? 0 : 15);
+	}
+	else
+	{
+		DrawTimerTemp::TimeLeft = timeLeft / 15;
+		R->ESI(timeLeft);
+	}
+
+	return SkipGetTimeLeft;
+}
+
+DEFINE_HOOK(0x6D4B03, TacticalClass_Render_DrawBlackoutTimer_TimeLeft, 0x5)
+{
+	DrawTimerTemp::TimeLeft = R->EDX<int>();
+	return 0;
+}
+
+static int __fastcall TacticalClass_DrawTimer_swprintf(wchar_t* pBuffer, size_t bufferCount, wchar_t* pFormat, ...)
+{
+	using namespace DrawTimerTemp;
+
+	if (IsPercentage)
+		return swprintf(pBuffer, bufferCount, L"%.2lf%s", Percentage * 100, L"%%");
+	else
+		return swprintf(pBuffer, bufferCount, L"%02d:%02d", TimeLeft / 60 % 60, TimeLeft % 60);
+}
+DEFINE_FUNCTION_JUMP(CALL, 0x6D4C4C, TacticalClass_DrawTimer_swprintf)
+
+static Point2D* __fastcall TacticalClass_DrawTimer_Print_Wide
+(
+Point2D& retBuffer,
+const wchar_t* pText,
+Surface* pSurface,
+const RectangleStruct& bounds,
+Point2D& location,
+ColorScheme* pForeScheme,
+ColorScheme* pBackScheme,
+TextPrintType flag,
+...
+)
+{
+	using namespace DrawTimerTemp;
+	AdjustLocation = !AdjustLocation;
+
+	if (AdjustLocation)
+	{
+		if (IsPercentage)
+		{
+			IsPercentage = false;
+			location.X += 8;
+		}
+		else
+		{
+			location.X -= 2;
+		}
+	}
+
+	return Fancy_Text_Print_Wide(retBuffer, pText, pSurface, bounds, location, pForeScheme, pBackScheme, flag);
+}
+DEFINE_FUNCTION_JUMP(CALL, 0x6D4D42, TacticalClass_DrawTimer_Print_Wide)// UIName
+DEFINE_FUNCTION_JUMP(CALL, 0x6D4D9A, TacticalClass_DrawTimer_Print_Wide)// Time
+
+#pragma endregion
+
+DEFINE_HOOK(0x6DBEA3, TacticalClass_DrawRadialIndicator_Building_Extras, 0x7)
+{
+	enum { ContinueAfter = 0x6DBEAA };
+
+	GET(BuildingClass*, pCurrentBuilding, EBX);
+
+	if (Phobos::Config::ShowPowerPlantEnhancerRange && RulesExt::Global()->ShowPowerPlantEnhancerRange)
+	{
+		const auto pCurrentExt = HouseExt::Fetch(HouseClass::CurrentPlayer);
+		const auto center = DisplayClass::Instance.CurrentFoundation_CenterCell;
+
+		for (const auto pEnhancer : pCurrentExt->PowerPlantEnhancers)
+		{
+			if (!TechnoExt::IsActive(pEnhancer) || pEnhancer->InLimbo || !pEnhancer->HasPower)
+				continue;
+
+			const auto pEnhancerTypeExt = BuildingTypeExt::Fetch(pEnhancer->Type);
+			const int range = pEnhancerTypeExt->PowerPlantEnhancer_Range.Get() / Unsorted::LeptonsPerCell;
+
+			if (range <= 0 || !pEnhancerTypeExt->PowerPlantEnhancer_Buildings.Contains(pCurrentBuilding->Type))
+				continue;
+
+			CoordStruct enhancerCoords = pEnhancer->GetCoords();
+
+			if (center.DistanceFromSquared(CellClass::Coord2Cell(enhancerCoords)) > range * range * 2.25) // 1.5 * 1.5
+				continue;
+
+			enhancerCoords.Z = MapClass::Instance.GetCellFloorHeight(enhancerCoords);
+			const auto& color = pEnhancer->Owner->Color;
+			Game::DrawRadialIndicator(false, true, enhancerCoords, color, (float)range, false, true);
+		}
+	}
+
+	R->EAX(pCurrentBuilding->GetRadialIndicatorRange());
+	return ContinueAfter;
+}

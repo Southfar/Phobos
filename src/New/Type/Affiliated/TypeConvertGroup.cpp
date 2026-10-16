@@ -1,0 +1,110 @@
+#include <Ext/Techno/Body.h>
+#include "TypeConvertGroup.h"
+
+void TypeConvertGroup::Convert(FootClass* pTargetFoot, const std::vector<TypeConvertGroup>& convertPairs, HouseClass* pOwner)
+{
+	for (const auto& [fromTypes, toType, affectedHouses] : convertPairs)
+	{
+		if (!toType.Get())
+			continue;
+
+		if (pOwner && !EnumFunctions::CanTargetHouse(affectedHouses, pOwner, pTargetFoot->Owner))
+			continue;
+
+		if (fromTypes.size())
+		{
+			const auto pType = pTargetFoot->GetTechnoType();
+
+			for (const auto& from : fromTypes)
+			{
+				// Check if the target matches upgrade-from TechnoType and it has something to upgrade to
+				if (from == pType)
+				{
+					TechnoExt::ConvertToType(pTargetFoot, toType);
+					goto end; // Breaking out of nested loops without extra checks one of the very few remaining valid usecases for goto, leave it be.
+				}
+			}
+		}
+		else
+		{
+			TechnoExt::ConvertToType(pTargetFoot, toType);
+			break;
+		}
+	}
+end:
+	return;
+}
+
+
+bool TypeConvertGroup::Load(PhobosStreamReader& stm, bool registerForChange)
+{
+	return this->Serialize(stm);
+}
+
+bool TypeConvertGroup::Save(PhobosStreamWriter& stm) const
+{
+	return const_cast<TypeConvertGroup*>(this)->Serialize(stm);
+}
+
+void TypeConvertGroup::Parse(std::vector<TypeConvertGroup>& list, INI_EX& exINI, const char* pSection, AffectedHouse defaultAffectHouse)
+{
+	for (size_t i = 0; ; ++i)
+	{
+		char tempBuffer[32];
+		ValueableVector<TechnoTypeClass*> convertFrom;
+		Nullable<TechnoTypeClass*> convertTo;
+		Nullable<AffectedHouse> convertAffectsHouse;
+		_snprintf_s(tempBuffer, sizeof(tempBuffer), "Convert%d.From", i);
+		convertFrom.Read(exINI, pSection, tempBuffer);
+		_snprintf_s(tempBuffer, sizeof(tempBuffer), "Convert%d.To", i);
+		convertTo.Read(exINI, pSection, tempBuffer);
+		_snprintf_s(tempBuffer, sizeof(tempBuffer), "Convert%d.AffectedHouses", i); // Temporary solution for the INI tags renaming issue, see #2093
+		convertAffectsHouse.Read(exINI, pSection, tempBuffer);
+		if (convertAffectsHouse.isset())
+		{
+			Debug::Log("[Developer warning][%s] %s is deprecated and has been replaced by Convert%d.AffectsHouse! If both are set, the latter will be used.\n",
+				pSection, tempBuffer, i);
+		}
+		_snprintf_s(tempBuffer, sizeof(tempBuffer), "Convert%d.AffectsHouse", i);
+		convertAffectsHouse.Read(exINI, pSection, tempBuffer);
+
+		if (!convertTo.isset())
+			break;
+
+		if (!convertAffectsHouse.isset())
+			convertAffectsHouse = defaultAffectHouse;
+
+		list.emplace_back(convertFrom, convertTo, convertAffectsHouse);
+	}
+	ValueableVector<TechnoTypeClass*> convertFrom;
+	Nullable<TechnoTypeClass*> convertTo;
+	Nullable<AffectedHouse> convertAffectsHouse;
+	convertFrom.Read(exINI, pSection, "Convert.From");
+	convertTo.Read(exINI, pSection, "Convert.To");
+	convertAffectsHouse.Read(exINI, pSection, "Convert.AffectedHouses"); // Temporary solution for the INI tags renaming issue, see #2093
+	if (convertAffectsHouse.isset())
+	{
+		Debug::Log("[Developer warning][%s] Convert.AffectedHouses is deprecated and has been replaced by Convert.AffectsHouse! If both are set, the latter will be used.\n", pSection);
+	}
+	convertAffectsHouse.Read(exINI, pSection, "Convert.AffectsHouse");
+	if (convertTo.isset())
+	{
+		if (!convertAffectsHouse.isset())
+			convertAffectsHouse = defaultAffectHouse;
+
+		if (list.size())
+			list[0] = { convertFrom, convertTo, convertAffectsHouse };
+		else
+			list.emplace_back(convertFrom, convertTo, convertAffectsHouse);
+	}
+}
+
+template <typename T>
+bool TypeConvertGroup::Serialize(T& stm)
+{
+	return stm
+		.Process(this->FromTypes)
+		.Process(this->ToType)
+		.Process(this->AppliedTo)
+		.Success();
+}

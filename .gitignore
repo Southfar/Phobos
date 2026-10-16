@@ -1,0 +1,34 @@
+Release
+Debug
+*.vcxproj.user
+*.vcxproj.filters
+*.sdf
+*.suo
+.vs
+.cproject
+.project
+*.aps
+*.log
+
+Nightly/
+
+DevBuild/
+
+docs/_build/
+docs/locale/.doctrees/
+*.pot
+*.mo
+
+/.vscode
+
+build
+cmake-*
+out
+.idea
+
+# Python virtual environment for docs
+.venv/
+
+# Python bytecode caches
+__pycache__/
+*.py[cod]

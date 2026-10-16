@@ -1,0 +1,98 @@
+#include "Body.h"
+
+VoxelAnimTypeExt::ExtContainer VoxelAnimTypeExt::ExtMap;
+
+void VoxelAnimTypeExt::Initialize() { }
+
+void VoxelAnimTypeExt::LoadFromINIFile(CCINIClass* pINI)
+{
+	const char* pID = this->OwnerObject()->ID;
+	INI_EX exINI(pINI);
+
+	this->LaserTrail_Types.Read(exINI, pID, "LaserTrail.Types");
+	this->ExplodeOnWater.Read(exINI, pID, "ExplodeOnWater");
+	this->Warhead_Detonate.Read(exINI, pID, "Warhead.Detonate");
+	this->WakeAnim.Read(exINI, pID, "WakeAnim");
+	this->SplashAnims.Read(exINI, pID, "SplashAnims");
+	this->SplashAnims_PickRandom.Read(exINI, pID, "SplashAnims.PickRandom");
+	this->Trailer_SpawnDelay.Read(exINI, pID, "Trailer.SpawnDelay");
+}
+
+// =============================
+// load / save
+template <typename T>
+void VoxelAnimTypeExt::Serialize(T& Stm)
+{
+	Stm
+		.Process(LaserTrail_Types)
+		.Process(this->ExplodeOnWater)
+		.Process(this->Warhead_Detonate)
+		.Process(this->WakeAnim)
+		.Process(this->SplashAnims)
+		.Process(this->SplashAnims_PickRandom)
+		.Process(this->Trailer_SpawnDelay)
+		;
+}
+
+void VoxelAnimTypeExt::LoadFromStream(PhobosStreamReader& Stm)
+{
+	ObjectTypeExt::LoadFromStream(Stm);
+	this->Serialize(Stm);
+}
+
+void VoxelAnimTypeExt::SaveToStream(PhobosStreamWriter& Stm)
+{
+	ObjectTypeExt::SaveToStream(Stm);
+	this->Serialize(Stm);
+}
+
+bool VoxelAnimTypeExt::LoadGlobals(PhobosStreamReader& Stm)
+{
+	return Stm
+		.Success();
+}
+
+bool VoxelAnimTypeExt::SaveGlobals(PhobosStreamWriter& Stm)
+{
+	return Stm
+		.Success();
+}
+
+// =============================
+// container
+
+VoxelAnimTypeExt::ExtContainer::ExtContainer() : Container("VoxelVoxelAnimTypeClass") { }
+VoxelAnimTypeExt::ExtContainer::~ExtContainer() = default;
+
+// =============================
+// container hooks
+
+DEFINE_HOOK(0x74AEB0, VoxelAnimTypeClass_CTOR, 0xB)
+{
+	GET(VoxelAnimTypeClass*, pItem, ESI);
+
+	VoxelAnimTypeExt::ExtMap.TryAllocate(pItem);
+
+	return 0;
+}
+
+DEFINE_HOOK(0x74BA31, VoxelAnimTypeClass_DTOR, 0x5)
+{
+	GET(VoxelAnimTypeClass*, pItem, ECX);
+
+	VoxelAnimTypeExt::ExtMap.Remove(pItem);
+	return 0;
+}
+
+DEFINE_HOOK_AGAIN(0x74B607, VoxelAnimTypeClass_LoadFromINI, 0x5)
+DEFINE_HOOK_AGAIN(0x74B561, VoxelAnimTypeClass_LoadFromINI, 0x5)
+DEFINE_HOOK_AGAIN(0x74B54A, VoxelAnimTypeClass_LoadFromINI, 0x5)
+DEFINE_HOOK_AGAIN(0x74B51B, VoxelAnimTypeClass_LoadFromINI, 0x5)
+DEFINE_HOOK(0x74B4F0, VoxelAnimTypeClass_LoadFromINI, 0x5)
+{
+	GET(VoxelAnimTypeClass*, pItem, ESI);
+	GET_STACK(CCINIClass*, pINI, 0x4);
+
+	VoxelAnimTypeExt::ExtMap.LoadFromINI(pItem, pINI);
+	return 0;
+}
