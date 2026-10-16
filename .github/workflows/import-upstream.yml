@@ -1,0 +1,25 @@
+name: Import upstream Phobos v0.5-alpha2
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/import-upstream.yml'
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch official Phobos tag and preserve upstream history
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/Phobos-developers/Phobos.git source
+          cd source
+          git fetch --tags --force
+          git checkout --detach b1dc830570358315273ce3f958a8846c439c1d7e
+          test "$(git rev-parse HEAD)" = b1dc830570358315273ce3f958a8846c439c1d7e
+          git remote add destination "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push destination HEAD:refs/heads/upstream/v0.5-alpha2
+          git push destination HEAD:refs/heads/feature/terrain-activeanim
