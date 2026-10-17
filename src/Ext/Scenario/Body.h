@@ -7,10 +7,31 @@
 
 #include <Ext/Techno/Body.h>
 
+class TerrainClass;
+class AnimClass;
+
 struct ExtendedVariable
 {
 	char Name[0x100];
 	int Value;
+};
+
+// A null animation records a finite animation that has already finished.
+struct TerrainActiveAnimation
+{
+	TerrainClass* Terrain = nullptr;
+	AnimClass* Animation = nullptr;
+
+	bool Load(PhobosStreamReader& stm, bool registerForChange)
+	{
+		return stm.Process(this->Terrain, registerForChange)
+			.Process(this->Animation, registerForChange).Success();
+	}
+
+	bool Save(PhobosStreamWriter& stm) const
+	{
+		return stm.Process(this->Terrain).Process(this->Animation).Success();
+	}
 };
 
 class ScenarioExt
@@ -52,6 +73,8 @@ public:
 
 		int FiringAnimUpdateCount;
 
+		std::vector<TerrainActiveAnimation> TerrainActiveAnimations;
+
 		ExtData(ScenarioClass* OwnerObject) : Extension<ScenarioClass>(OwnerObject)
 			, ShowBriefing { false }
 			, BriefingTheme { -1 }
@@ -71,6 +94,7 @@ public:
 			, FallingDownTracker {}
 			, EVAIndex { -2 }
 			, FiringAnimUpdateCount { 0 }
+			, TerrainActiveAnimations {}
 		{ }
 
 		static void SetVariableToByID(bool bIsGlobal, int nIndex, char bState);
@@ -87,6 +111,8 @@ public:
 
 		void UpdateAutoDeathObjectsInLimbo();
 		void UpdateTransportReloaders();
+		void UpdateTerrainActiveAnimations();
+		void InvalidateTerrainActiveAnimations(AbstractClass* pInvalid, bool removed);
 		void RegisterAutoDeath(TechnoClass* pTechno);
 	private:
 		template <typename T>

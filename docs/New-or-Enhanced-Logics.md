@@ -2500,6 +2500,32 @@ WarpOutWeapon=                          ; WeaponType
 
 ## Terrain
 
+### Active animation
+
+- TerrainTypes can create a separate animation at their world coordinates using `ActiveAnim` in their art section, selected by `Image`.
+- The animation starts on the first scenario logic update after placement. It does not require `IsAnimated`, `IsFlammable`, or membership in the terrain logic layer.
+- The animation is attached to the terrain object. It is removed when the terrain is destroyed, including the start of crumbling, or explicitly removed. Limbo is reconciled before the next logic update.
+- A finite animation is not restarted after it finishes. Configure the AnimationType's looping properties for a continuing effect. Building power controls, damaged variants, offsets, and additional animation slots are not part of this extension.
+- Associations, including finished animations, are serialized and pointer-remapped on load. Saves from builds without these fields are not compatible.
+- Discovery scans the terrain array each logic update, in array order. Test performance on densely wooded maps before deploying many weapon-firing animations.
+
+In `artmd.ini`:
+```ini
+[SOMETERRAINIMAGE]  ; TerrainType art section
+ActiveAnim=         ; AnimationType, defaults to none
+```
+
+An animation weapon can opt into zero-damage detonation using `Weapon.AllowZeroDamage=true` in its AnimationType art section. This requires an existing `Weapon` and animation `Damage=0`. Without the opt-in, zero animation damage retains its previous behavior. `Damage.Delay` counts damage-update opportunities, with a minimum interval of one; `Damage.ApplyOncePerLoop` retains its existing frame gate when enabled. Warhead effect eligibility and zero-damage handling still require appropriate configuration.
+
+```ini
+[SOMEANIMATION]              ; AnimationType in artmd.ini
+Weapon=                     ; WeaponType
+Damage=0
+Weapon.AllowZeroDamage=false ; boolean
+Damage.Delay=10
+Damage.ApplyOncePerLoop=false
+```
+
 ### Destroy animation & sound
 
 - You can now specify a destroy animation and sound for a TerrainType that are played when it is destroyed.

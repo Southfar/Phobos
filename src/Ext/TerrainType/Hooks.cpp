@@ -1,6 +1,7 @@
 #include "Body.h"
 
 #include <Ext/Rules/Body.h>
+#include <Ext/Scenario/Body.h>
 
 namespace TerrainTypeTemp
 {
@@ -264,6 +265,9 @@ DEFINE_HOOK(0x71B98B, TerrainClass_TakeDamage_RefreshDamageFrame, 0x7)
 DEFINE_HOOK(0x71BB2C, TerrainClass_TakeDamage_NowDead_Add, 0x6)
 {
 	GET(TerrainClass*, pThis, ESI);
+	// Stop the active animation at death, including while the tree crumbles.
+	ScenarioExt::Global()->InvalidateTerrainActiveAnimations(pThis, true);
+
 	//saved for later usage !
 	//REF_STACK(args_ReceiveDamage const, ReceiveDamageArgs, STACK_OFFSET(0x3C, 0x4));
 

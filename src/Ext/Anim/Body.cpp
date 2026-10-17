@@ -13,6 +13,9 @@ std::vector<AnimClass*> AnimExt::AnimsWithAttachedParticles;
 
 AnimExt::~AnimExt()
 {
+	if (auto const pScenarioExt = ScenarioExt::Global())
+		pScenarioExt->InvalidateTerrainActiveAnimations(this->OwnerObject(), true);
+
 	this->DeleteAttachedSystem();
 
 	if (this->Invoker)

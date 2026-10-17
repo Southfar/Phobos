@@ -336,6 +336,9 @@ DEFINE_HOOK(0x7258D0, AnnounceInvalidPointer, 0x6)
 	GET(AbstractClass* const, pInvalid, ECX);
 	GET(bool const, removed, EDX);
 
+	if (auto const pScenarioExt = ScenarioExt::Global())
+		pScenarioExt->InvalidateTerrainActiveAnimations(pInvalid, removed);
+
 	Detach::NotifyAbstract(pInvalid, removed);
 	PhobosTypeRegistry::InvalidatePointer(pInvalid, removed);
 

@@ -27,6 +27,7 @@ public:
 	Valueable<PartialVector2D<int>> SpawnsTiberium_GrowthStage;
 	Valueable<PartialVector2D<int>> SpawnsTiberium_CellsPerAnim;
 	ValueableIdx<ParticleTypeClass> SpawnsTiberium_Particle;
+	Valueable<AnimTypeClass*> ActiveAnim;
 	ValueableVector<AnimTypeClass*> DestroyAnim;
 	ValueableIdx<VocClass> DestroySound;
 	Nullable<ColorStruct> MinimapColor;
@@ -46,6 +47,7 @@ public:
 		, SpawnsTiberium_GrowthStage { { 3 } }
 		, SpawnsTiberium_CellsPerAnim { { 1 } }
 		, SpawnsTiberium_Particle { -1 }
+		, ActiveAnim {}
 		, DestroyAnim {}
 		, DestroySound {}
 		, MinimapColor {}

@@ -39,6 +39,7 @@ public:
 	Nullable<bool> Layer_UseObjectLayer;
 	Valueable<AttachedAnimPosition> AttachedAnimPosition;
 	Valueable<WeaponTypeClass*> Weapon;
+	Valueable<bool> Weapon_AllowZeroDamage;
 	Valueable<int> Damage_Delay;
 	Nullable<bool> Damage_DealtByInvoker;
 	Valueable<bool> Damage_ApplyOncePerLoop;
@@ -83,6 +84,7 @@ public:
 		, Layer_UseObjectLayer {}
 		, AttachedAnimPosition { AttachedAnimPosition::Default }
 		, Weapon {}
+		, Weapon_AllowZeroDamage { false }
 		, Damage_Delay { 0 }
 		, Damage_DealtByInvoker {}
 		, Damage_ApplyOncePerLoop { false }

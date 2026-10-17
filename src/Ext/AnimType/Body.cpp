@@ -84,6 +84,7 @@ void AnimTypeExt::LoadFromINIFile(CCINIClass* pINI)
 	this->Layer_UseObjectLayer.Read(exINI, pID, "Layer.UseObjectLayer");
 	this->AttachedAnimPosition.Read(exINI, pID, "AttachedAnimPosition");
 	this->Weapon.Read<true>(exINI, pID, "Weapon");
+	this->Weapon_AllowZeroDamage.Read(exINI, pID, "Weapon.AllowZeroDamage");
 	this->Damage_Delay.Read(exINI, pID, "Damage.Delay");
 	this->Damage_DealtByInvoker.Read(exINI, pID, "Damage.DealtByInvoker");
 	this->Damage_ApplyOncePerLoop.Read(exINI, pID, "Damage.ApplyOncePerLoop");
@@ -148,6 +149,7 @@ void AnimTypeExt::Serialize(T& Stm)
 		.Process(this->Layer_UseObjectLayer)
 		.Process(this->AttachedAnimPosition)
 		.Process(this->Weapon)
+		.Process(this->Weapon_AllowZeroDamage)
 		.Process(this->Damage_Delay)
 		.Process(this->Damage_DealtByInvoker)
 		.Process(this->Damage_ApplyOncePerLoop)

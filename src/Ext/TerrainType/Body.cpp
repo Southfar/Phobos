@@ -1,6 +1,7 @@
 #include "Body.h"
 
 #include <Ext/Anim/Body.h>
+#include <Ext/Scenario/Body.h>
 
 TerrainTypeExt::ExtContainer TerrainTypeExt::ExtMap;
 
@@ -25,6 +26,9 @@ void TerrainTypeExt::Remove(TerrainClass* pTerrain)
 	if (!pTerrain)
 		return;
 
+	if (auto const pScenarioExt = ScenarioExt::Global())
+		pScenarioExt->InvalidateTerrainActiveAnimations(pTerrain, true);
+
 	RectangleStruct rect = RectangleStruct {};
 	rect = *pTerrain->GetRenderDimensions(&rect);
 	TacticalClass::Instance->RegisterDirtyArea(rect, false);
@@ -44,6 +48,7 @@ void TerrainTypeExt::Serialize(T& Stm)
 		.Process(this->SpawnsTiberium_GrowthStage)
 		.Process(this->SpawnsTiberium_CellsPerAnim)
 		.Process(this->SpawnsTiberium_Particle)
+		.Process(this->ActiveAnim)
 		.Process(this->DestroyAnim)
 		.Process(this->DestroySound)
 		.Process(this->MinimapColor)
@@ -68,6 +73,9 @@ void TerrainTypeExt::LoadFromINIFile(CCINIClass* const pINI)
 	this->SpawnsTiberium_GrowthStage.Read(exINI, pSection, "SpawnsTiberium.GrowthStage");
 	this->SpawnsTiberium_CellsPerAnim.Read(exINI, pSection, "SpawnsTiberium.CellsPerAnim");
 	this->SpawnsTiberium_Particle.Read(exINI, pSection, "SpawnsTiberium.Particle");
+
+	INI_EX exArtINI(&CCINIClass::INI_Art);
+	this->ActiveAnim.Read(exArtINI, pThis->ImageFile, "ActiveAnim");
 
 	this->DestroyAnim.Read(exINI, pSection, "DestroyAnim");
 	this->DestroySound.Read(exINI, pSection, "DestroySound");

@@ -53,6 +53,7 @@ DEFINE_HOOK(0x42453E, AnimClass_AI_Damage, 0x6)
 	const bool isTerrain = pOwnerObject && pOwnerObject->WhatAmI() == AbstractType::Terrain;
 	const int damageMultiplier = isTerrain ? 5 : 1;
 	const double baseDamage = pType->Damage;
+	const bool zeroDamageWeapon = pTypeExt->Weapon && pTypeExt->Weapon_AllowZeroDamage && baseDamage == 0.0;
 	const bool firstDamage = pThis->Animation.Value == std::max(delay - 1, 1);
 
 	int appliedDamage = 0;
@@ -63,6 +64,13 @@ DEFINE_HOOK(0x42453E, AnimClass_AI_Damage, 0x6)
 			appliedDamage = static_cast<int>(std::round(baseDamage)) * damageMultiplier;
 		else
 			return SkipDamage;
+	}
+	else if (zeroDamageWeapon)
+	{
+		pThis->Accum += 1.0;
+		if (pThis->Accum < std::max(delay, 1))
+			return SkipDamage;
+		pThis->Accum = 0.0;
 	}
 	else if (delay <= 0 || baseDamage < 1.0) // If Damage.Delay is less than 1 or Damage is a fraction.
 	{
@@ -93,7 +101,7 @@ DEFINE_HOOK(0x42453E, AnimClass_AI_Damage, 0x6)
 		pThis->Accum = 0.0;
 	}
 
-	if (appliedDamage <= 0)
+	if (appliedDamage <= 0 && !zeroDamageWeapon)
 		return SkipDamage;
 
 	TechnoClass* pInvoker = nullptr;

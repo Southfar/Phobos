@@ -16,6 +16,8 @@ You can use the migration utility (can be found on [Phobos supplementaries repo]
 
 ### 0.5
 
+- Southfar fork: added TerrainType `ActiveAnim` support and opt-in animation `Weapon.AllowZeroDamage`. This source implementation still requires a Windows build and in-game validation.
+
 #### Changes to vanilla behavior
 
 - Vehicles paradropped by AI players now default to `Hunt` mission instead of `Guard`, matching what infantry do. This can be customized by setting `AIParadropMission` on the VehicleType, defaults to `[General] -> AIParadropMission`.

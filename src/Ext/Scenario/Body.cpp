@@ -3,10 +3,84 @@
 #include <VeinholeMonsterClass.h>
 
 #include <Ext/House/Body.h>
+#include <Ext/TerrainType/Body.h>
+#include <AnimClass.h>
+#include <TerrainClass.h>
+#include <unordered_set>
 
 std::unique_ptr<ScenarioExt::ExtData> ScenarioExt::Data = nullptr;
 
 bool ScenarioExt::CellParsed = false;
+
+void ScenarioExt::ExtData::InvalidateTerrainActiveAnimations(AbstractClass* pInvalid, bool removed)
+{
+	if (!removed)
+		return;
+
+	for (auto& entry : this->TerrainActiveAnimations)
+	{
+		if (entry.Animation == pInvalid)
+			entry.Animation = nullptr;
+
+		if (entry.Terrain == pInvalid)
+		{
+			// Clear both pointers before UnInit: removal recursively announces the animation.
+			auto const pAnim = entry.Animation;
+			entry.Terrain = nullptr;
+			entry.Animation = nullptr;
+			if (pAnim)
+			{
+				pAnim->SetOwnerObject(nullptr);
+				pAnim->UnInit();
+			}
+		}
+	}
+}
+
+void ScenarioExt::ExtData::UpdateTerrainActiveAnimations()
+{
+	// Scenery need not be in the logic layer. Discover it in stable terrain-array order.
+	// The set is used only for membership, never for simulation iteration order.
+	std::unordered_set<TerrainClass*> known;
+	known.reserve(this->TerrainActiveAnimations.size());
+	for (auto& entry : this->TerrainActiveAnimations)
+	{
+		const auto pTerrain = entry.Terrain;
+		if (!pTerrain)
+			continue;
+
+		if (pTerrain->InLimbo || pTerrain->Health <= 0)
+		{
+			auto const pAnim = entry.Animation;
+			entry.Terrain = nullptr;
+			entry.Animation = nullptr;
+			if (pAnim)
+			{
+				pAnim->SetOwnerObject(nullptr);
+				pAnim->UnInit();
+			}
+			continue;
+		}
+
+		known.insert(pTerrain);
+	}
+
+	std::erase_if(this->TerrainActiveAnimations, [](const auto& entry) { return !entry.Terrain; });
+
+	for (auto const pTerrain : TerrainClass::Array)
+	{
+		if (pTerrain->InLimbo || pTerrain->Health <= 0 || known.contains(pTerrain))
+			continue;
+
+		auto const pTypeExt = TerrainTypeExt::Fetch(pTerrain->Type);
+		if (auto const pAnimType = pTypeExt->ActiveAnim.Get())
+		{
+			auto const pAnim = GameCreate<AnimClass>(pAnimType, pTerrain->GetCoords());
+			pAnim->SetOwnerObject(pTerrain);
+			this->TerrainActiveAnimations.push_back({ pTerrain, pAnim });
+		}
+	}
+}
 
 void ScenarioExt::ExtData::SetVariableToByID(bool bIsGlobal, int nIndex, char bState)
 {
@@ -192,6 +266,7 @@ void ScenarioExt::ExtData::Serialize(T& Stm)
 		.Process(this->FallingDownTracker)
 		.Process(this->EVAIndex)
 		.Process(this->FiringAnimUpdateCount)
+		.Process(this->TerrainActiveAnimations)
 		;
 }
 
@@ -291,6 +366,7 @@ DEFINE_HOOK(0x55B4E1, LogicClass_Update_BeforeAll, 0x5)
 
 	ScenarioExt::Global()->UpdateAutoDeathObjectsInLimbo();
 	ScenarioExt::Global()->UpdateTransportReloaders();
+	ScenarioExt::Global()->UpdateTerrainActiveAnimations();
 
 	return 0;
 }

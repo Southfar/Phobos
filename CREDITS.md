@@ -2,6 +2,9 @@
 
 This page lists all the individual contributions to the project by their author.
 
+- **Southfar, with OpenAI Codex**:
+  - TerrainType active-animation extension and opt-in zero-damage animation weapons (Southfar fork).
+
 - **Belonit (Gluk-v48)**:
   - Disable empty spawn positions
   - `gamemd.exe` icon customization
